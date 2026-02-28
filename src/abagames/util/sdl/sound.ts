@@ -179,8 +179,9 @@ export class Music implements Sound {
 export class Chunk implements Sound {
   public static dir = "sounds/chunks";
   private chunk: string | null = null;
-  private chunkAudio: HTMLAudioElement | null = null;
-  private playing: HTMLAudioElement[] = [];
+  private players: HTMLAudioElement[] = [];
+  private nextPlayerIdx = 0;
+  private readonly maxPlayers = 8;
   private chunkChannel = 0;
 
   public load(name: string): void;
@@ -189,8 +190,9 @@ export class Chunk implements Sound {
     if (SoundManager.noSound) return;
     const fileName = `${Chunk.dir}/${name}`;
     this.chunk = fileName;
-    if (typeof Audio !== "undefined") this.chunkAudio = new Audio(fileName);
-    else if (!this.chunk) throw new SDLException(`Couldn't load: ${fileName}`);
+    this.players = [];
+    this.nextPlayerIdx = 0;
+    if (typeof Audio === "undefined" && !this.chunk) throw new SDLException(`Couldn't load: ${fileName}`);
     this.chunkChannel = ch;
   }
 
@@ -198,34 +200,51 @@ export class Chunk implements Sound {
     if (this.chunk) {
       this.halt();
       this.chunk = null;
-      this.chunkAudio = null;
+      this.players = [];
     }
   }
 
   public play(): void {
     if (SoundManager.noSound) return;
     SoundManager.unlock();
-    if (!this.chunkAudio) return;
-    const a = this.chunkAudio.cloneNode() as HTMLAudioElement;
-    a.currentTime = 0;
-    void a.play().catch(() => {
+    if (!this.chunk || typeof Audio === "undefined") return;
+    const player = this.acquirePlayer();
+    if (!player) return;
+    player.currentTime = 0;
+    void player.play().catch(() => {
       // Missing/unsupported audio source should not break gameplay loop.
     });
-    this.playing.push(a);
-    this.playing = this.playing.filter((x) => !x.ended);
     void this.chunkChannel;
   }
 
   public halt(): void {
     if (SoundManager.noSound) return;
-    for (const a of this.playing) {
+    for (const a of this.players) {
       a.pause();
       a.currentTime = 0;
     }
-    this.playing = [];
   }
 
   public fade(): void {
     this.halt();
+  }
+
+  private acquirePlayer(): HTMLAudioElement | null {
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (p.ended || p.paused) {
+        return p;
+      }
+    }
+    if (this.players.length < this.maxPlayers) {
+      const p = new Audio(this.chunk!);
+      p.preload = "auto";
+      this.players.push(p);
+      return p;
+    }
+    const p = this.players[this.nextPlayerIdx];
+    this.nextPlayerIdx = (this.nextPlayerIdx + 1) % this.players.length;
+    p.pause();
+    return p;
   }
 }
