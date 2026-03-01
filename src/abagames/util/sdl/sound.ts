@@ -39,8 +39,10 @@ export class SoundManager {
 
   public static unlock(): void {
     if (!SoundManager.audioContext || SoundManager.unlocked) return;
-    void SoundManager.audioContext.resume();
-    SoundManager.unlocked = SoundManager.audioContext.state === "running";
+    const ctx = SoundManager.audioContext;
+    void ctx.resume().finally(() => {
+      SoundManager.unlocked = ctx.state === "running";
+    });
   }
 
   private static bindUnlockHandlers(): void {
@@ -49,10 +51,12 @@ export class SoundManager {
     const unlock = (): void => {
       SoundManager.unlock();
       if (SoundManager.unlocked) {
+        window.removeEventListener("touchstart", unlock);
         window.removeEventListener("pointerdown", unlock);
         window.removeEventListener("keydown", unlock);
       }
     };
+    window.addEventListener("touchstart", unlock, { passive: true });
     window.addEventListener("pointerdown", unlock);
     window.addEventListener("keydown", unlock);
   }
@@ -178,11 +182,13 @@ export class Music implements Sound {
 
 export class Chunk implements Sound {
   public static dir = "sounds/chunks";
+  private static bufferCache = new Map<string, Promise<AudioBuffer | null>>();
   private chunk: string | null = null;
-  private players: HTMLAudioElement[] = [];
-  private nextPlayerIdx = 0;
+  private buffer: AudioBuffer | null = null;
+  private readonly activeSources = new Set<AudioBufferSourceNode>();
   private readonly maxPlayers = 8;
   private chunkChannel = 0;
+  private pendingPlay = false;
 
   public load(name: string): void;
   public load(name: string, ch: number): void;
@@ -190,70 +196,98 @@ export class Chunk implements Sound {
     if (SoundManager.noSound) return;
     const fileName = `${Chunk.dir}/${name}`;
     this.chunk = fileName;
-    this.players = [];
-    this.nextPlayerIdx = 0;
-    if (typeof Audio === "undefined" && !this.chunk) throw new SDLException(`Couldn't load: ${fileName}`);
     this.chunkChannel = ch;
+    this.buffer = null;
+    this.activeSources.clear();
+    this.pendingPlay = false;
+    void this.decodeChunk(fileName);
   }
 
   public free(): void {
     if (this.chunk) {
       this.halt();
       this.chunk = null;
-      this.players = [];
+      this.buffer = null;
+      this.pendingPlay = false;
     }
   }
 
   public play(): void {
     if (SoundManager.noSound) return;
     SoundManager.unlock();
-    if (!this.chunk || typeof Audio === "undefined") return;
-    const player = this.acquirePlayer();
-    if (!player) return;
-    player.currentTime = 0;
-    void player.play().catch(() => {
-      // Missing/unsupported audio source should not break gameplay loop.
-    });
+    if (!this.chunk) return;
+    const ctx = SoundManager.getContext();
+    if (!ctx) return;
+    if (!this.buffer) {
+      this.pendingPlay = true;
+      void this.decodeChunk(this.chunk);
+      return;
+    }
+    this.playWithBuffer(ctx);
     void this.chunkChannel;
+  }
+
+  private playWithBuffer(ctx: AudioContext): void {
+    if (!this.buffer) return;
+    if (this.activeSources.size >= this.maxPlayers) {
+      const oldest = this.activeSources.values().next().value as AudioBufferSourceNode | undefined;
+      oldest?.stop();
+    }
+    const source = ctx.createBufferSource();
+    source.buffer = this.buffer;
+    source.connect(ctx.destination);
+    this.activeSources.add(source);
+    source.onended = () => {
+      this.activeSources.delete(source);
+      source.disconnect();
+    };
+    source.start(0);
   }
 
   public halt(): void {
     if (SoundManager.noSound) return;
-    for (const a of this.players) {
-      a.pause();
-      a.currentTime = 0;
+    for (const s of this.activeSources) {
+      s.stop();
+      s.disconnect();
     }
+    this.activeSources.clear();
   }
 
   public fade(): void {
     this.halt();
   }
 
-  private acquirePlayer(): HTMLAudioElement | null {
-    for (let i = 0; i < this.players.length; i++) {
-      const p = this.players[i];
-      if (p.ended || p.paused) {
-        return p;
+  private async decodeChunk(fileName: string): Promise<void> {
+    const ctx = SoundManager.getContext();
+    if (!ctx) return;
+    let p = Chunk.bufferCache.get(fileName);
+    if (!p) {
+      p = fetch(fileName)
+        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new SDLException(`Couldn't load: ${fileName}`))))
+        .then((b) => ctx.decodeAudioData(b))
+        .catch(() => null);
+      Chunk.bufferCache.set(fileName, p);
+    }
+    const decoded = await p;
+    if (this.chunk === fileName) {
+      this.buffer = decoded;
+      if (decoded && this.pendingPlay) {
+        this.pendingPlay = false;
+        const ctx2 = SoundManager.getContext();
+        if (ctx2) this.playWithBuffer(ctx2);
       }
     }
-    if (this.players.length < this.maxPlayers) {
-      const p = new Audio(this.chunk!);
-      p.preload = "auto";
-      this.players.push(p);
-      return p;
-    }
-    const p = this.players[this.nextPlayerIdx];
-    this.nextPlayerIdx = (this.nextPlayerIdx + 1) % this.players.length;
-    p.pause();
-    return p;
   }
 }
 
 // Workaround for iPhone
 export function shouldSuppressSfx(): boolean {
+  return false;
+  /*
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent ?? "";
   const isiOS = /iPhone|iPad|iPod/.test(ua);
   if (isiOS) return true;
   return false;
+  */
 }
