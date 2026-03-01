@@ -125,8 +125,8 @@ export class GLCompat {
     this.gl.viewport(0, 0, this.width, this.height);
   }
 
-  public setViewport(width: number, height: number): void {
-    this.gl.viewport(0, 0, Math.max(1, width), Math.max(1, height));
+  public setViewport(x: number, y: number, width: number, height: number): void {
+    this.gl.viewport(x | 0, y | 0, Math.max(1, width), Math.max(1, height));
   }
 
   public clear(): void {

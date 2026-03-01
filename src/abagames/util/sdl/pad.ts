@@ -5,6 +5,7 @@
  */
 
 import type { Input, SDLEvent } from "./input";
+import { getTouchLayout, isTouchEnvironment } from "./touchlayout";
 
 const SDL_PRESSED = 1;
 const SDLK_RIGHT = 39;
@@ -258,13 +259,7 @@ export class Pad implements Input {
   }
 
   private detectTouchScreen(): boolean {
-    if (typeof window === "undefined" || typeof navigator === "undefined") return false;
-    if (navigator.maxTouchPoints > 0) return true;
-    if ("ontouchstart" in window) return true;
-    if (typeof window.matchMedia === "function") {
-      if (window.matchMedia("(pointer: coarse)").matches) return true;
-    }
-    return false;
+    return isTouchEnvironment();
   }
 
   private resolveTouchRole(clientX: number, clientY: number): TouchRole {
@@ -330,6 +325,38 @@ export class Pad implements Input {
   }
 
   private getTouchGuideLayout(width: number, height: number): TouchGuideLayout {
+    const layout = getTouchLayout(width, height, this.touchGuideEnabled);
+    if (layout.mode === "portraitPad") {
+      const minSize = Math.min(width, height);
+      const moveRadius = Math.max(36, minSize * 0.11);
+      const btnRadius = Math.max(30, minSize * 0.085);
+      const pauseRadius = Math.max(20, minSize * 0.05);
+      const gameBottom = layout.gameViewport.y + layout.gameViewport.height;
+      const padHeight = Math.max(1, height - gameBottom);
+      return {
+        move: { x: width * 0.22, y: gameBottom + padHeight * 0.5, radius: moveRadius },
+        fire: { x: width * 0.84, y: gameBottom + padHeight * 0.44, radius: btnRadius },
+        charge: { x: width * 0.78, y: gameBottom + padHeight * 0.76, radius: btnRadius },
+        pause: { x: width * 0.92, y: Math.max(pauseRadius + 6, layout.gameViewport.y + pauseRadius + 6), radius: pauseRadius },
+      };
+    }
+    if (layout.mode === "landscapeUltraWide") {
+      const minSize = Math.min(width, height);
+      const moveRadius = Math.max(36, minSize * 0.11);
+      const btnRadius = Math.max(30, minSize * 0.085);
+      const pauseRadius = Math.max(20, minSize * 0.05);
+      const leftGutter = layout.gameViewport.x;
+      const rightStart = layout.gameViewport.x + layout.gameViewport.width;
+      const rightGutter = Math.max(0, width - rightStart);
+      const leftX = leftGutter >= moveRadius * 1.6 ? leftGutter * 0.5 : layout.gameViewport.x + moveRadius * 0.85;
+      const rightX = rightGutter >= btnRadius * 2 ? rightStart + rightGutter * 0.55 : rightStart - btnRadius * 1.1;
+      return {
+        move: { x: leftX, y: height * 0.62, radius: moveRadius },
+        fire: { x: rightX, y: height * 0.58, radius: btnRadius },
+        charge: { x: rightX, y: height * 0.8, radius: btnRadius },
+        pause: { x: rightStart + Math.max(pauseRadius * 1.2, rightGutter * 0.4), y: pauseRadius + 10, radius: pauseRadius },
+      };
+    }
     const minSize = Math.min(width, height);
     const moveRadius = Math.max(36, minSize * 0.11);
     const btnRadius = Math.max(30, minSize * 0.085);

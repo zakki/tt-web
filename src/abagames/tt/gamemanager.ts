@@ -9,6 +9,7 @@ import { RecordablePad } from "../util/sdl/recordablepad";
 import type { MainLoop } from "../util/sdl/mainloop";
 import { GameManager as BaseGameManager } from "../util/sdl/gamemanager";
 import { Screen3D } from "../util/sdl/screen3d";
+import { getTouchLayout, toGLViewport } from "../util/sdl/touchlayout";
 import { Barrage, BarrageManager } from "./barrage";
 import { BulletActorPool } from "./bulletactorpool";
 import { Enemy, EnemyPool } from "./enemy";
@@ -177,7 +178,11 @@ export class GameManager extends BaseGameManager {
   }
 
   public override draw(): void {
+    const gameViewport = getTouchLayout(Screen.width, Screen.height).gameViewport;
+    const glGameViewport = toGLViewport(gameViewport, Screen.height);
     if (this.screen.startRenderToLuminousScreen()) {
+      glViewport(glGameViewport.x, glGameViewport.y, glGameViewport.width, glGameViewport.height);
+      setPerspectiveForSize(gameViewport.width, gameViewport.height);
       glPushMatrix();
       this.ship.setEyepos();
       this.state.drawLuminous();
@@ -185,14 +190,21 @@ export class GameManager extends BaseGameManager {
       this.screen.endRenderToLuminousScreen();
     }
     this.screen.clear();
+    glViewport(glGameViewport.x, glGameViewport.y, glGameViewport.width, glGameViewport.height);
+    setPerspectiveForSize(gameViewport.width, gameViewport.height);
     glPushMatrix();
     this.ship.setEyepos();
     this.state.draw();
     glPopMatrix();
+    glViewport(0, 0, Screen.width, Screen.height);
+    setPerspectiveForSize(Screen.width, Screen.height);
     this.screen.drawLuminous();
+    glViewport(glGameViewport.x, glGameViewport.y, glGameViewport.width, glGameViewport.height);
     Screen.viewOrthoFixed();
     this.state.drawFront();
     Screen.viewPerspective();
+    glViewport(0, 0, Screen.width, Screen.height);
+    setPerspectiveForSize(Screen.width, Screen.height);
   }
 }
 
@@ -614,10 +626,18 @@ class TitleState extends GameState {
   }
 
   public override draw(): void {
+    const gameViewport = getTouchLayout(Screen.width, Screen.height).gameViewport;
     if (this.replayDataRef) {
       let rcr = this.titleManager.replayChangeRatio() * 2.4;
       if (rcr > 1) rcr = 1;
-      glViewport(0, 0, ((Screen.width / 4) * (3 + rcr)) | 0, Screen.height);
+      const replayViewport = {
+        x: gameViewport.x,
+        y: gameViewport.y,
+        width: ((gameViewport.width / 4) * (3 + rcr)) | 0,
+        height: gameViewport.height,
+      };
+      const glReplayViewport = toGLViewport(replayViewport, Screen.height);
+      glViewport(glReplayViewport.x, glReplayViewport.y, glReplayViewport.width, glReplayViewport.height);
       glEnable(Screen3D.GL_CULL_FACE);
       this.tunnel.draw();
       this.tunnel.drawBackward();
@@ -634,18 +654,9 @@ class TitleState extends GameState {
       glEnable(Screen3D.GL_BLEND);
       this.shots.draw();
     }
-    glViewport(0, 0, Screen.width, Screen.height);
-    glMatrixMode(Screen3D.GL_PROJECTION);
-    glLoadIdentity();
-    glFrustum(
-      -Screen.nearPlane,
-      Screen.nearPlane,
-      (-Screen.nearPlane * Screen.height) / Screen.width,
-      (Screen.nearPlane * Screen.height) / Screen.width,
-      0.1,
-      Screen.farPlane,
-    );
-    glMatrixMode(Screen3D.GL_MODELVIEW);
+    const glGameViewport = toGLViewport(gameViewport, Screen.height);
+    glViewport(glGameViewport.x, glGameViewport.y, glGameViewport.width, glGameViewport.height);
+    setPerspectiveForSize(gameViewport.width, gameViewport.height);
     this.titleManager.draw();
   }
 
@@ -684,4 +695,20 @@ function glLoadIdentity(): void {
 }
 function glFrustum(left: number, right: number, bottom: number, top: number, nearVal: number, farVal: number): void {
   Screen3D.glFrustum(left, right, bottom, top, nearVal, farVal);
+}
+
+function setPerspectiveForSize(width: number, height: number): void {
+  const w = Math.max(1, width);
+  const h = Math.max(1, height);
+  glMatrixMode(Screen3D.GL_PROJECTION);
+  glLoadIdentity();
+  glFrustum(
+    -Screen.nearPlane,
+    Screen.nearPlane,
+    (-Screen.nearPlane * h) / w,
+    (Screen.nearPlane * h) / w,
+    0.1,
+    Screen.farPlane,
+  );
+  glMatrixMode(Screen3D.GL_MODELVIEW);
 }

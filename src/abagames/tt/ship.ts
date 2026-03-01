@@ -12,6 +12,7 @@ import { ShipShape } from "./shape";
 import type { BulletTarget } from "./bullettarget";
 import { SliceState, Tunnel } from "./tunnel";
 import { Screen3D } from "../util/sdl/screen3d";
+import { getTouchLayout } from "../util/sdl/touchlayout";
 import { Camera } from "./camera";
 import { SoundManager } from "./soundmanager";
 
@@ -432,7 +433,15 @@ export class Ship implements BulletTarget {
       glMatrixMode(Screen3D.GL_PROJECTION);
       glLoadIdentity();
       const np = Screen.nearPlane * this.camera.zoom;
-      glFrustum(-np, np, (-np * Screen.height) / Screen.width, (np * Screen.height) / Screen.width, 0.1, Screen.farPlane);
+      const gameViewport = getTouchLayout(Screen.width, Screen.height).gameViewport;
+      glFrustum(
+        -np,
+        np,
+        (-np * gameViewport.height) / gameViewport.width,
+        (np * gameViewport.height) / gameViewport.width,
+        0.1,
+        Screen.farPlane,
+      );
       glMatrixMode(Screen3D.GL_MODELVIEW);
     }
     if (this.screenShakeCnt > 0) {
