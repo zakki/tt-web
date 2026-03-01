@@ -279,15 +279,3 @@ export class Chunk implements Sound {
     }
   }
 }
-
-// Workaround for iPhone
-export function shouldSuppressSfx(): boolean {
-  return false;
-  /*
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent ?? "";
-  const isiOS = /iPhone|iPad|iPod/.test(ua);
-  if (isiOS) return true;
-  return false;
-  */
-}
