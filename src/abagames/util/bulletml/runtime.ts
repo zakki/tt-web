@@ -956,22 +956,27 @@ class BulletMLRunnerTS implements BulletMLRunner {
 export class BulletMLParserAsset {
   public readonly name: string;
   public readonly url: string;
+  public readonly inlineXmlText: string | null;
 
   private parser: BulletMLParserTS | null = null;
   private preloadPromise: Promise<void> | null = null;
 
-  public constructor(name: string, url: string) {
+  public constructor(name: string, url: string, inlineXmlText: string | null = null) {
     this.name = name;
     this.url = url;
+    this.inlineXmlText = inlineXmlText;
   }
 
   public async preload(): Promise<void> {
     if (this.parser) return;
     if (!this.preloadPromise) {
       this.preloadPromise = (async () => {
-        const res = await fetch(this.url);
-        if (!res.ok) throw new Error(`Unable to load BulletML: ${this.url}`);
-        const xml = await res.text();
+        let xml = this.inlineXmlText;
+        if (xml == null) {
+          const res = await fetch(this.url);
+          if (!res.ok) throw new Error(`Unable to load BulletML: ${this.url}`);
+          xml = await res.text();
+        }
         const p = new BulletMLParserTS(this.name);
         p.parse(xml);
         this.parser = p;

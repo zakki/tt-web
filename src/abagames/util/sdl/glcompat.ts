@@ -13,6 +13,13 @@ export interface GLCompatStaticMesh {
   readonly colorBuffer: WebGLBuffer;
 }
 
+export interface GLCompatRenderTarget {
+  readonly texture: WebGLTexture;
+  readonly framebuffer: WebGLFramebuffer;
+  readonly width: number;
+  readonly height: number;
+}
+
 export class GLCompat {
   private readonly gl: GL;
   private program: WebGLProgram;
@@ -50,6 +57,8 @@ export class GLCompat {
   private drawVerticesBuffer = new Float32Array(0);
   private drawTexCoordsBuffer = new Float32Array(0);
   private drawColorsBuffer = new Float32Array(0);
+  private matrixMulScratch = new Float32Array(16);
+  private activeRenderTarget: GLCompatRenderTarget | null = null;
 
   public static create(canvas: HTMLCanvasElement): GLCompat {
     const gl = canvas.getContext("webgl", {
@@ -116,6 +125,10 @@ export class GLCompat {
     this.gl.viewport(0, 0, this.width, this.height);
   }
 
+  public setViewport(width: number, height: number): void {
+    this.gl.viewport(0, 0, Math.max(1, width), Math.max(1, height));
+  }
+
   public clear(): void {
     this.gl.clearColor(this.clearColor[0], this.clearColor[1], this.clearColor[2], this.clearColor[3]);
     this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
@@ -173,11 +186,15 @@ export class GLCompat {
   }
 
   public translateXYZ(x: number, y: number, z = 0): void {
-    this.mulCurrentMatrix(mat4Translation(x, y, z));
+    const m = this.getCurrentMatrix();
+    mat4TranslateInPlace(m, x, y, z);
+    this.mvpDirty = true;
   }
 
   public scaleXYZ(x: number, y: number, z = 1): void {
-    this.mulCurrentMatrix(mat4Scaling(x, y, z));
+    const m = this.getCurrentMatrix();
+    mat4ScaleInPlace(m, x, y, z);
+    this.mvpDirty = true;
   }
 
   public rotateDeg(angleDeg: number, x = 0, y = 0, z = 1): void {
@@ -376,6 +393,61 @@ export class GLCompat {
     gl.deleteProgram(this.program);
   }
 
+  public createRenderTarget(width: number, height: number): GLCompatRenderTarget | null {
+    const gl = this.gl;
+    const w = Math.max(1, width);
+    const h = Math.max(1, height);
+    const texture = gl.createTexture();
+    const framebuffer = gl.createFramebuffer();
+    if (!texture || !framebuffer) {
+      if (texture) gl.deleteTexture(texture);
+      if (framebuffer) gl.deleteFramebuffer(framebuffer);
+      return null;
+    }
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+    const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    if (status !== gl.FRAMEBUFFER_COMPLETE) {
+      gl.deleteFramebuffer(framebuffer);
+      gl.deleteTexture(texture);
+      return null;
+    }
+    return { texture, framebuffer, width: w, height: h };
+  }
+
+  public beginRenderTarget(target: GLCompatRenderTarget): void {
+    const gl = this.gl;
+    this.activeRenderTarget = target;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
+    gl.viewport(0, 0, target.width, target.height);
+  }
+
+  public endRenderTarget(): void {
+    const gl = this.gl;
+    this.activeRenderTarget = null;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, this.width, this.height);
+  }
+
+  public deleteRenderTarget(target: GLCompatRenderTarget): void {
+    const gl = this.gl;
+    if (this.activeRenderTarget === target) {
+      this.endRenderTarget();
+    }
+    if (this.boundTexture === target.texture) this.boundTexture = null;
+    gl.deleteFramebuffer(target.framebuffer);
+    gl.deleteTexture(target.texture);
+  }
+
   private createProgram(): WebGLProgram {
     const gl = this.gl;
     const vertexSrc = `
@@ -500,6 +572,9 @@ void main() {
     texCoords: Float32Array;
     colors: Float32Array;
   } | null {
+    if (mode === "quads") {
+      return this.createPackedQuadDrawCall(vertices, colors);
+    }
     const vertexCount = Math.floor(vertices.length / 3);
     if (vertexCount <= 0) return null;
     this.ensureDrawBuffers(vertexCount);
@@ -566,6 +641,60 @@ void main() {
       default:
         return null;
     }
+  }
+
+  private createPackedQuadDrawCall(
+    vertices: number[],
+    colors: number[],
+  ): {
+    mode: number;
+    count: number;
+    vertices: Float32Array;
+    texCoords: Float32Array;
+    colors: Float32Array;
+  } | null {
+    const rawCount = Math.floor(vertices.length / 3);
+    const quadCount = Math.floor(rawCount / 4);
+    const triCount = quadCount * 6;
+    if (triCount <= 0) return null;
+    this.ensureDrawBuffers(triCount);
+    const hasPerVertexColor = colors.length >= rawCount * 4;
+    const triPattern = [0, 1, 2, 0, 2, 3];
+    let vPtr = 0;
+    let tPtr = 0;
+    let cPtr = 0;
+    for (let q = 0; q < quadCount; q++) {
+      const base = q * 4;
+      for (let i = 0; i < 6; i++) {
+        const idx = base + triPattern[i];
+        const vIdx = idx * 3;
+        this.drawVerticesBuffer[vPtr++] = vertices[vIdx];
+        this.drawVerticesBuffer[vPtr++] = vertices[vIdx + 1];
+        this.drawVerticesBuffer[vPtr++] = vertices[vIdx + 2];
+        this.drawVerticesBuffer[vPtr++] = 1;
+        this.drawTexCoordsBuffer[tPtr++] = 0;
+        this.drawTexCoordsBuffer[tPtr++] = 0;
+        if (hasPerVertexColor) {
+          const cIdx = idx * 4;
+          this.drawColorsBuffer[cPtr++] = colors[cIdx];
+          this.drawColorsBuffer[cPtr++] = colors[cIdx + 1];
+          this.drawColorsBuffer[cPtr++] = colors[cIdx + 2];
+          this.drawColorsBuffer[cPtr++] = colors[cIdx + 3];
+        } else {
+          this.drawColorsBuffer[cPtr++] = this.drawColor[0];
+          this.drawColorsBuffer[cPtr++] = this.drawColor[1];
+          this.drawColorsBuffer[cPtr++] = this.drawColor[2];
+          this.drawColorsBuffer[cPtr++] = this.drawColor[3];
+        }
+      }
+    }
+    return {
+      mode: this.gl.TRIANGLES,
+      count: triCount,
+      vertices: this.drawVerticesBuffer.subarray(0, triCount * 4),
+      texCoords: this.drawTexCoordsBuffer.subarray(0, triCount * 2),
+      colors: this.drawColorsBuffer.subarray(0, triCount * 4),
+    };
   }
 
   private applyBlendMode(): void {
@@ -787,12 +916,14 @@ void main() {
 
   private mulCurrentMatrix(m: Float32Array): void {
     const current = this.getCurrentMatrix();
-    this.setCurrentMatrix(mat4Mul(current, m));
+    mat4MulInto(this.matrixMulScratch, current, m);
+    current.set(this.matrixMulScratch);
+    this.mvpDirty = true;
   }
 
   private getCurrentMvp(): Float32Array {
     if (this.mvpDirty) {
-      this.mvp = mat4Mul(this.projection, this.modelView);
+      mat4MulInto(this.mvp, this.projection, this.modelView);
       this.mvpDirty = false;
     }
     return this.mvp;
@@ -818,8 +949,13 @@ function mat4Clone(m: Float32Array): Float32Array {
 }
 
 function mat4Mul(a: Float32Array, b: Float32Array): Float32Array {
-  // OpenGL-style column-major matrix multiplication: out = a * b
   const out = new Float32Array(16);
+  mat4MulInto(out, a, b);
+  return out;
+}
+
+function mat4MulInto(out: Float32Array, a: Float32Array, b: Float32Array): void {
+  // OpenGL-style column-major matrix multiplication: out = a * b
   for (let c = 0; c < 4; c++) {
     const b0 = b[c * 4];
     const b1 = b[c * 4 + 1];
@@ -830,7 +966,28 @@ function mat4Mul(a: Float32Array, b: Float32Array): Float32Array {
     out[c * 4 + 2] = a[2] * b0 + a[6] * b1 + a[10] * b2 + a[14] * b3;
     out[c * 4 + 3] = a[3] * b0 + a[7] * b1 + a[11] * b2 + a[15] * b3;
   }
-  return out;
+}
+
+function mat4TranslateInPlace(m: Float32Array, x: number, y: number, z: number): void {
+  m[12] += m[0] * x + m[4] * y + m[8] * z;
+  m[13] += m[1] * x + m[5] * y + m[9] * z;
+  m[14] += m[2] * x + m[6] * y + m[10] * z;
+  m[15] += m[3] * x + m[7] * y + m[11] * z;
+}
+
+function mat4ScaleInPlace(m: Float32Array, x: number, y: number, z: number): void {
+  m[0] *= x;
+  m[1] *= x;
+  m[2] *= x;
+  m[3] *= x;
+  m[4] *= y;
+  m[5] *= y;
+  m[6] *= y;
+  m[7] *= y;
+  m[8] *= z;
+  m[9] *= z;
+  m[10] *= z;
+  m[11] *= z;
 }
 
 function mat4Translation(x: number, y: number, z: number): Float32Array {

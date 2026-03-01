@@ -18,7 +18,9 @@ export type BulletMLRunner = {
   dispose?: () => void;
   close?: () => void;
 };
-export type BulletMLState = unknown;
+export type BulletMLState = {
+  createRunner: () => BulletMLRunner;
+};
 
 /**
  * Bullet controlled by BulletML.
@@ -56,10 +58,10 @@ export class Bullet {
   public static addBullet(state: BulletMLState, deg: number, speed: number): void;
   public static addBullet(a: number | BulletMLState, b: number, c?: number): void {
     if (typeof a === "number") {
-      Bullet.manager.addBullet(a, b);
+      Bullet.manager.addSimpleBullet(a, b);
       return;
     }
-    Bullet.manager.addBullet(a, b, c ?? 0);
+    Bullet.manager.addStateBullet(a, b, c ?? 0);
   }
 
   public static getTurn(): number {

@@ -181,7 +181,7 @@ export class Chunk implements Sound {
   private chunk: string | null = null;
   private players: HTMLAudioElement[] = [];
   private nextPlayerIdx = 0;
-  private readonly maxPlayers = getChunkMaxPlayers();
+  private readonly maxPlayers = 8;
   private chunkChannel = 0;
 
   public load(name: string): void;
@@ -247,12 +247,4 @@ export class Chunk implements Sound {
     p.pause();
     return p;
   }
-}
-
-function getChunkMaxPlayers(): number {
-  if (typeof navigator === "undefined") return 8;
-  const ua = navigator.userAgent ?? "";
-  const isiOS = /iPhone|iPad|iPod/.test(ua);
-  if (isiOS) return 4;
-  return 8;
 }

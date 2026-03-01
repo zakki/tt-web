@@ -67,6 +67,7 @@ export class Pad implements Input {
   private touchMoveCurrentX = 0;
   private touchMoveCurrentY = 0;
   private touchGuideEnabled = false;
+  private touchFireToggled = false;
 
   public openJoystick(): void {
     if (typeof window === "undefined") return;
@@ -216,7 +217,7 @@ export class Pad implements Input {
         this.touchMoveCurrentY = e.clientY;
         this.updateTouchMoveKeys();
       }
-      if (role === "fire") this.keys[SDLK_z] = SDL_PRESSED;
+      if (role === "fire") this.toggleTouchFire();
       if (role === "charge") this.keys[SDLK_x] = SDL_PRESSED;
       if (role === "pause") this.keys[SDLK_p] = SDL_PRESSED;
     };
@@ -286,7 +287,6 @@ export class Pad implements Input {
       this.keys[SDLK_UP] = 0;
       this.keys[SDLK_DOWN] = 0;
     }
-    if (role === "fire" && !this.hasTouchRole("fire")) this.keys[SDLK_z] = 0;
     if (role === "charge" && !this.hasTouchRole("charge")) this.keys[SDLK_x] = 0;
     if (role === "pause" && !this.hasTouchRole("pause")) this.keys[SDLK_p] = 0;
   }
@@ -301,6 +301,7 @@ export class Pad implements Input {
   private clearTouchState(): void {
     this.touchRoles.clear();
     this.touchMovePointerId = null;
+    this.touchFireToggled = false;
     this.keys[SDLK_LEFT] = 0;
     this.keys[SDLK_RIGHT] = 0;
     this.keys[SDLK_UP] = 0;
@@ -308,6 +309,11 @@ export class Pad implements Input {
     this.keys[SDLK_z] = 0;
     this.keys[SDLK_x] = 0;
     this.keys[SDLK_p] = 0;
+  }
+
+  private toggleTouchFire(): void {
+    this.touchFireToggled = !this.touchFireToggled;
+    this.keys[SDLK_z] = this.touchFireToggled ? SDL_PRESSED : 0;
   }
 
   private getTouchGuideLayout(width: number, height: number): TouchGuideLayout {

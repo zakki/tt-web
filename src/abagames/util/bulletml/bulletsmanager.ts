@@ -10,8 +10,8 @@ import type { Bullet, BulletMLState } from "./bullet";
  * Interface for bullet's instances manager.
  */
 export interface BulletsManager {
-  addBullet(deg: number, speed: number): void;
-  addBullet(state: BulletMLState, deg: number, speed: number): void;
+  addSimpleBullet(deg: number, speed: number): void;
+  addStateBullet(state: BulletMLState, deg: number, speed: number): void;
   getTurn(): number;
   killMe(bullet: Bullet): void;
 }

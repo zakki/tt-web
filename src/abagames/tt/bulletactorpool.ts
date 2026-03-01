@@ -56,6 +56,14 @@ export class BulletActorPool extends ActorPool<BulletActor> implements BulletsMa
     }
   }
 
+  public addSimpleBullet(deg: number, speed: number): void {
+    this.addBullet(deg, speed);
+  }
+
+  public addStateBullet(state: BulletMLState, deg: number, speed: number): void {
+    this.addBullet(state, deg, speed);
+  }
+
   public addTopBullet(
     parserParam: ParserParam[],
     x: number,

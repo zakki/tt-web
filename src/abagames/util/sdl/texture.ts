@@ -18,10 +18,16 @@ export class Texture {
   private texture: WebGLTexture | null = null;
   private loaded = false;
   private failed = false;
+  private readonly loadPromise: Promise<boolean>;
+  private settleLoadPromise: ((ok: boolean) => void) | null = null;
+  private loadPromiseSettled = false;
 
   public constructor(name: string) {
     this.fileName = `${Texture.imagesDir}${name}`;
     if (!this.fileName) throw new SDLInitFailedException(`Unable to load: ${this.fileName}`);
+    this.loadPromise = new Promise<boolean>((resolve) => {
+      this.settleLoadPromise = resolve;
+    });
     this.loadImage();
   }
 
@@ -52,25 +58,46 @@ export class Texture {
     return this.loaded;
   }
 
+  public get isFailed(): boolean {
+    return this.failed;
+  }
+
   public getImage(): HTMLImageElement | null {
     return this.image;
   }
 
+  public waitForLoad(): Promise<boolean> {
+    return this.loadPromise;
+  }
+
   private loadImage(): void {
-    if (typeof Image === "undefined") return;
+    if (typeof Image === "undefined") {
+      this.failed = true;
+      this.loaded = false;
+      this.resolveLoadPromise(false);
+      return;
+    }
     const img = new Image();
     img.onload = () => {
       this.image = img;
       this.loaded = true;
       this.failed = false;
       this.num = 1;
+      this.resolveLoadPromise(true);
     };
     img.onerror = () => {
       this.failed = true;
       this.loaded = false;
       this.image = null;
       this.num = 0;
+      this.resolveLoadPromise(false);
     };
     img.src = this.fileName;
+  }
+
+  private resolveLoadPromise(ok: boolean): void {
+    if (this.loadPromiseSettled) return;
+    this.loadPromiseSettled = true;
+    this.settleLoadPromise?.(ok);
   }
 }
