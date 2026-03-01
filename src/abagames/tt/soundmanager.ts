@@ -29,10 +29,17 @@ export class SoundManager extends SDLSoundManager {
   private static prevBgmIdx = -1;
   private static nextIdxMv = 1;
   private static seDisabled = false;
+  private static seLastPlayedMs = new Map<string, number>();
+  private static readonly seMinIntervalMs = new Map<string, number>([
+    ["shot.wav", 34],
+    ["charge.wav", 80],
+    ["hit.wav", 16],
+  ]);
 
   public static loadSounds(): void {
     this.bgm = this.loadMusics();
     this.se = this.loadChunks();
+    this.seLastPlayedMs.clear();
     this.prevBgmIdx = -1;
     this.rand = new Rand();
   }
@@ -116,6 +123,13 @@ export class SoundManager extends SDLSoundManager {
 
   public static playSe(name: string): void {
     if (this.seDisabled) return;
+    const minInterval = this.seMinIntervalMs.get(name) ?? 0;
+    if (minInterval > 0) {
+      const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+      const prev = this.seLastPlayedMs.get(name) ?? -1e9;
+      if (now - prev < minInterval) return;
+      this.seLastPlayedMs.set(name, now);
+    }
     this.se.get(name)?.play();
   }
 
