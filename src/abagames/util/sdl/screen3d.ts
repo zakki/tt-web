@@ -65,10 +65,17 @@ export abstract class Screen3D implements Screen {
         root.style.display = "inline-block";
         document.body.appendChild(root);
       }
+      root.style.touchAction = "none";
+      root.style.userSelect = "none";
+      root.style.webkitUserSelect = "none";
+      root.style.setProperty("-webkit-touch-callout", "none");
       if (Screen3D.autoResizeToWindow) {
         document.body.style.margin = "0";
         document.body.style.overflow = "hidden";
       }
+      document.body.style.userSelect = "none";
+      document.body.style.webkitUserSelect = "none";
+      document.body.style.setProperty("-webkit-touch-callout", "none");
       let canvas = document.getElementById("tt-screen") as HTMLCanvasElement | null;
       if (!canvas) {
         canvas = document.createElement("canvas");
@@ -76,6 +83,10 @@ export abstract class Screen3D implements Screen {
         canvas.style.display = "block";
         root.appendChild(canvas);
       }
+      canvas.style.touchAction = "none";
+      canvas.style.userSelect = "none";
+      canvas.style.webkitUserSelect = "none";
+      canvas.style.setProperty("-webkit-touch-callout", "none");
       canvas.width = Screen3D.width;
       canvas.height = Screen3D.height;
       canvas.style.width = `${Screen3D.width}px`;
@@ -93,6 +104,10 @@ export abstract class Screen3D implements Screen {
         overlay.style.pointerEvents = "none";
         root.appendChild(overlay);
       }
+      overlay.style.touchAction = "none";
+      overlay.style.userSelect = "none";
+      overlay.style.webkitUserSelect = "none";
+      overlay.style.setProperty("-webkit-touch-callout", "none");
       overlay.width = Screen3D.width;
       overlay.height = Screen3D.height;
       overlay.style.width = `${Screen3D.width}px`;

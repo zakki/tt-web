@@ -68,6 +68,7 @@ export class Pad implements Input {
   private touchMoveCurrentY = 0;
   private touchGuideEnabled = false;
   private touchFireToggled = false;
+  private touchGestureGuardBound = false;
 
   public openJoystick(): void {
     if (typeof window === "undefined") return;
@@ -205,6 +206,17 @@ export class Pad implements Input {
 
   private bindTouchListeners(): void {
     if (typeof window === "undefined") return;
+    if (!this.touchGestureGuardBound) {
+      this.touchGestureGuardBound = true;
+      const preventDefault = (e: Event) => {
+        if (e.cancelable) e.preventDefault();
+      };
+      window.addEventListener("touchstart", preventDefault, { passive: false });
+      window.addEventListener("touchmove", preventDefault, { passive: false });
+      window.addEventListener("gesturestart", preventDefault, { passive: false });
+      window.addEventListener("gesturechange", preventDefault, { passive: false });
+      window.addEventListener("gestureend", preventDefault, { passive: false });
+    }
     const handlePointerDown = (e: PointerEvent) => {
       if (e.pointerType === "mouse") return;
       e.preventDefault();
