@@ -2,11 +2,9 @@
  * Ported from tt/src/abagames/tt/tunnel.d
  */
 
-import { DisplayList } from "../util/sdl/displaylist";
 import { Rand } from "../util/rand";
 import { Screen3D } from "../util/sdl/screen3d";
 import { Vector, Vector3 } from "../util/vector";
-import { Screen } from "./screen";
 
 interface ShipLike {
   eyePos: Vector;
@@ -446,10 +444,10 @@ export class Slice {
     const lineColors = this.lineColorsBuffer;
     const polyVertices = this.polyVerticesBuffer;
     const polyColors = this.polyColorsBuffer;
-    lineVertices.length = 0;
-    lineColors.length = 0;
-    polyVertices.length = 0;
-    polyColors.length = 0;
+    let lv = 0;
+    let lc = 0;
+    let pv = 0;
+    let pc = 0;
     const lineR = Slice.lineR * lineBn;
     const lineG = Slice.lineG * lineBn;
     const lineB = Slice.lineB * lineBn;
@@ -460,25 +458,24 @@ export class Slice {
         const p0 = this.pointPos[pi | 0];
         const p1 = prevSlice.pointPos[psPi];
         const p2 = prevSlice.pointPos[psPrevPi];
-        lineVertices.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z, p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
-        lineColors.push(
-          lineR,
-          lineG,
-          lineB,
-          1,
-          lineR,
-          lineG,
-          lineB,
-          1,
-          lineR,
-          lineG,
-          lineB,
-          1,
-          lineR,
-          lineG,
-          lineB,
-          1,
-        );
+        lineVertices[lv++] = p0.x;
+        lineVertices[lv++] = p0.y;
+        lineVertices[lv++] = p0.z;
+        lineVertices[lv++] = p1.x;
+        lineVertices[lv++] = p1.y;
+        lineVertices[lv++] = p1.z;
+        lineVertices[lv++] = p1.x;
+        lineVertices[lv++] = p1.y;
+        lineVertices[lv++] = p1.z;
+        lineVertices[lv++] = p2.x;
+        lineVertices[lv++] = p2.y;
+        lineVertices[lv++] = p2.z;
+        for (let i = 0; i < 4; i++) {
+          lineColors[lc++] = lineR;
+          lineColors[lc++] = lineG;
+          lineColors[lc++] = lineB;
+          lineColors[lc++] = 1;
+        }
         if (polyBn > 0) {
           if (roundSlice || (!polyFirst && width > 0)) {
             this.polyPoint.blend(this.pointPos[prevPi | 0], prevSlice.pointPos[psPi], 0.9);
@@ -498,52 +495,48 @@ export class Slice {
             const dy = this.polyPoint.y;
             const dz = this.polyPoint.z;
             const polyLo = polyBn / 2;
-            polyVertices.push(
-              ax,
-              ay,
-              az,
-              bx,
-              by,
-              bz,
-              cx,
-              cy,
-              cz,
-              ax,
-              ay,
-              az,
-              cx,
-              cy,
-              cz,
-              dx,
-              dy,
-              dz,
-            );
-            polyColors.push(
-              Slice.polyR,
-              Slice.polyG,
-              Slice.polyB,
-              polyBn,
-              Slice.polyR,
-              Slice.polyG,
-              Slice.polyB,
-              polyBn,
-              Slice.polyR,
-              Slice.polyG,
-              Slice.polyB,
-              polyLo,
-              Slice.polyR,
-              Slice.polyG,
-              Slice.polyB,
-              polyBn,
-              Slice.polyR,
-              Slice.polyG,
-              Slice.polyB,
-              polyLo,
-              Slice.polyR,
-              Slice.polyG,
-              Slice.polyB,
-              polyLo,
-            );
+            polyVertices[pv++] = ax;
+            polyVertices[pv++] = ay;
+            polyVertices[pv++] = az;
+            polyVertices[pv++] = bx;
+            polyVertices[pv++] = by;
+            polyVertices[pv++] = bz;
+            polyVertices[pv++] = cx;
+            polyVertices[pv++] = cy;
+            polyVertices[pv++] = cz;
+            polyVertices[pv++] = ax;
+            polyVertices[pv++] = ay;
+            polyVertices[pv++] = az;
+            polyVertices[pv++] = cx;
+            polyVertices[pv++] = cy;
+            polyVertices[pv++] = cz;
+            polyVertices[pv++] = dx;
+            polyVertices[pv++] = dy;
+            polyVertices[pv++] = dz;
+            polyColors[pc++] = Slice.polyR;
+            polyColors[pc++] = Slice.polyG;
+            polyColors[pc++] = Slice.polyB;
+            polyColors[pc++] = polyBn;
+            polyColors[pc++] = Slice.polyR;
+            polyColors[pc++] = Slice.polyG;
+            polyColors[pc++] = Slice.polyB;
+            polyColors[pc++] = polyBn;
+            polyColors[pc++] = Slice.polyR;
+            polyColors[pc++] = Slice.polyG;
+            polyColors[pc++] = Slice.polyB;
+            polyColors[pc++] = polyLo;
+            polyColors[pc++] = Slice.polyR;
+            polyColors[pc++] = Slice.polyG;
+            polyColors[pc++] = Slice.polyB;
+            polyColors[pc++] = polyBn;
+            polyColors[pc++] = Slice.polyR;
+            polyColors[pc++] = Slice.polyG;
+            polyColors[pc++] = Slice.polyB;
+            polyColors[pc++] = polyLo;
+            polyColors[pc++] = Slice.polyR;
+            polyColors[pc++] = Slice.polyG;
+            polyColors[pc++] = Slice.polyB;
+            polyColors[pc++] = polyLo;
           } else {
             polyFirst = false;
           }
@@ -565,9 +558,25 @@ export class Slice {
       const edgeR = (lineBn / 3) * 2;
       const edgeG = (lineBn / 3) * 2;
       const edgeB = lineBn;
-      lineVertices.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z);
-      lineColors.push(edgeR, edgeG, edgeB, 1, edgeR, edgeG, edgeB, 1);
+      lineVertices[lv++] = p0.x;
+      lineVertices[lv++] = p0.y;
+      lineVertices[lv++] = p0.z;
+      lineVertices[lv++] = p1.x;
+      lineVertices[lv++] = p1.y;
+      lineVertices[lv++] = p1.z;
+      lineColors[lc++] = edgeR;
+      lineColors[lc++] = edgeG;
+      lineColors[lc++] = edgeB;
+      lineColors[lc++] = 1;
+      lineColors[lc++] = edgeR;
+      lineColors[lc++] = edgeG;
+      lineColors[lc++] = edgeB;
+      lineColors[lc++] = 1;
     }
+    lineVertices.length = lv;
+    lineColors.length = lc;
+    polyVertices.length = pv;
+    polyColors.length = pc;
     if (lineVertices.length > 0) Screen3D.glDrawArrays(Screen3D.GL_LINES, lineVertices, lineColors);
     if (polyVertices.length > 0) Screen3D.glDrawArrays(Screen3D.GL_TRIANGLES, polyVertices, polyColors);
     if (!roundSlice && lightBn > 0.2) {
@@ -983,7 +992,7 @@ export class Ring {
     [1, 0.9, 0.5],
   ];
   private _idx: number;
-  private displayList: DisplayList;
+  private parts: RingPart[] = [];
   private cnt: number;
   private type: number;
 
@@ -992,32 +1001,24 @@ export class Ring {
     this.cnt = 0;
     this.type = type;
     const r = ss.rad;
-    this.displayList = new DisplayList(type === 1 ? 2 : 1);
     if (type === 1) this.createFinalRing(r);
     else this.createNormalRing(r);
   }
 
   private createNormalRing(r: number): void {
-    this.displayList = new DisplayList(1);
-    this.displayList.beginNewList();
-    this.drawRing(r, 1.2, 1.4, 16);
-    this.displayList.endNewList();
+    this.parts = [this.createRingPart(r, 1.2, 1.4, 16)];
   }
 
   private createFinalRing(r: number): void {
-    this.displayList = new DisplayList(2);
-    this.displayList.beginNewList();
-    this.drawRing(r, 1.2, 1.5, 14);
-    this.displayList.nextNewList();
-    this.drawRing(r, 1.6, 1.9, 14);
-    this.displayList.endNewList();
+    this.parts = [this.createRingPart(r, 1.2, 1.5, 14), this.createRingPart(r, 1.6, 1.9, 14)];
   }
 
-  private drawRing(r: number, rr1: number, rr2: number, num: number): void {
+  private createRingPart(r: number, rr1: number, rr2: number, num: number): RingPart {
+    const vertices: number[] = [];
+    const baseColors: number[] = [];
     let d = 0;
     const md = 0.2;
     for (let i = 0; i < num; i++) {
-      glBegin(Screen3D.GL_LINE_LOOP);
       const p1 = new Vector3(Math.sin(d) * r * rr1, Math.cos(d) * r * rr1, 0);
       const p2 = new Vector3(Math.sin(d) * r * rr2, Math.cos(d) * r * rr2, 0);
       const p3 = new Vector3(Math.sin(d + md) * r * rr2, Math.cos(d + md) * r * rr2, 0);
@@ -1036,17 +1037,47 @@ export class Ring {
       np2.blend(p2, cp, 0.7);
       np3.blend(p3, cp, 0.7);
       np4.blend(p4, cp, 0.7);
-      Screen3D.glVertex(np1);
-      Screen3D.glVertex(np2);
-      Screen3D.glVertex(np3);
-      Screen3D.glVertex(np4);
-      glEnd();
+      // GL_LINE_LOOP(np1,np2,np3,np4) -> GL_LINES x4 segments
+      vertices.push(
+        np1.x,
+        np1.y,
+        np1.z,
+        np2.x,
+        np2.y,
+        np2.z,
+        np2.x,
+        np2.y,
+        np2.z,
+        np3.x,
+        np3.y,
+        np3.z,
+        np3.x,
+        np3.y,
+        np3.z,
+        np4.x,
+        np4.y,
+        np4.z,
+        np4.x,
+        np4.y,
+        np4.z,
+        np1.x,
+        np1.y,
+        np1.z,
+      );
+      for (let j = 0; j < 8; j++) {
+        baseColors.push(1, 1, 1, 1);
+      }
       d += md;
     }
+    return {
+      vertices,
+      baseColors,
+      drawColors: new Array<number>(baseColors.length).fill(1),
+    };
   }
 
   public close(): void {
-    this.displayList.close();
+    this.parts = [];
   }
 
   public move(): void {
@@ -1059,13 +1090,15 @@ export class Ring {
     const p = c.pos;
     const d1 = c.d1;
     const d2 = c.d2;
-    Screen.setColor(Ring.COLOR_RGB[this.type][0] * a, Ring.COLOR_RGB[this.type][1] * a, Ring.COLOR_RGB[this.type][2] * a);
+    const r = Ring.COLOR_RGB[this.type][0] * a;
+    const g = Ring.COLOR_RGB[this.type][1] * a;
+    const b = Ring.COLOR_RGB[this.type][2] * a;
     glPushMatrix();
     glTranslatef(p.x, p.y, p.z);
     glRotatef(this.cnt * 1.0, 0, 0, 1);
     glRotatef(d1, 0, 1, 0);
     glRotatef(d2, 1, 0, 0);
-    this.displayList.call(0);
+    this.drawPart(0, r, g, b);
     glPopMatrix();
     if (this.type === 1) {
       glPushMatrix();
@@ -1073,10 +1106,22 @@ export class Ring {
       glRotatef(this.cnt * -1.0, 0, 0, 1);
       glRotatef(d1, 0, 1, 0);
       glRotatef(d2, 1, 0, 0);
-      this.displayList.call(1);
+      this.drawPart(1, r, g, b);
       glPopMatrix();
     }
     glBlendFunc(Screen3D.GL_SRC_ALPHA, Screen3D.GL_ONE_MINUS_SRC_ALPHA);
+  }
+
+  private drawPart(idx: number, r: number, g: number, b: number): void {
+    const part = this.parts[idx];
+    if (!part || part.vertices.length <= 0) return;
+    for (let i = 0; i < part.drawColors.length; i += 4) {
+      part.drawColors[i] = part.baseColors[i] * r;
+      part.drawColors[i + 1] = part.baseColors[i + 1] * g;
+      part.drawColors[i + 2] = part.baseColors[i + 2] * b;
+      part.drawColors[i + 3] = 1;
+    }
+    Screen3D.glDrawArrays(Screen3D.GL_LINES, part.vertices, part.drawColors);
   }
 
   public get idx(): number {
@@ -1084,12 +1129,12 @@ export class Ring {
   }
 }
 
-function glBegin(mode: number): void {
-  Screen3D.glBegin(mode);
+interface RingPart {
+  vertices: number[];
+  baseColors: number[];
+  drawColors: number[];
 }
-function glEnd(): void {
-  Screen3D.glEnd();
-}
+
 function glPushMatrix(): void {
   Screen3D.glPushMatrix();
 }
@@ -1101,9 +1146,6 @@ function glTranslatef(x: number, y: number, z: number): void {
 }
 function glRotatef(angleDeg: number, x: number, y: number, z: number): void {
   Screen3D.glRotatef(angleDeg, x, y, z);
-}
-function glVertex3f(x: number, y: number, z: number): void {
-  Screen3D.glVertex3f(x, y, z);
 }
 function glBlendFunc(sfactor: number, dfactor: number): void {
   Screen3D.glBlendFunc(sfactor, dfactor);
