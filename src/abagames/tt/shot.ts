@@ -11,6 +11,7 @@ import { ResizableDrawable, ShotShape } from "./shape";
 import { Ship } from "./ship";
 import { Tunnel } from "./tunnel";
 import { SoundManager } from "./soundmanager";
+import { shouldSuppressSfx } from "../util/sdl/sound";
 
 interface EnemyPoolLike {
   checkShotHit(pos: Vector, shape: ResizableDrawable, shot: Shot): void;
@@ -127,7 +128,9 @@ export class Shot extends Actor {
       this.starShell = star;
       this.deg = d;
       this.shape.shape(Shot.shotShape);
-      SoundManager.playSe("shot.wav");
+      if (!shouldSuppressSfx()) {
+        SoundManager.playSe("shot.wav");
+      }
     }
     this.exists = true;
   }
