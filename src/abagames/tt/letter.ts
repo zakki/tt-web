@@ -2,15 +2,14 @@
  * Ported from tt/src/abagames/tt/letter.d
  */
 
-import { DisplayList } from "../util/sdl/displaylist";
+import type { GLCompatStaticMesh } from "../util/sdl/glcompat";
 import { Screen3D } from "../util/sdl/screen3d";
-import { Screen } from "./screen";
 
 /**
  * Letters.
  */
 export class Letter {
-  public static displayList: DisplayList;
+  private static glyphModels: LetterGlyphModel[] = [];
   public static readonly LETTER_WIDTH = 2.1;
   public static readonly LETTER_HEIGHT = 3.0;
   public static readonly COLOR_NUM = 4;
@@ -19,22 +18,24 @@ export class Letter {
     [0.9, 0.7, 0.5],
   ];
   private static readonly LETTER_NUM = 44;
-  private static readonly DISPLAY_LIST_NUM = Letter.LETTER_NUM * Letter.COLOR_NUM;
 
   public static init(): void {
-    Letter.displayList = new DisplayList(Letter.DISPLAY_LIST_NUM);
-    Letter.displayList.resetList();
+    Letter.close();
+    const models: LetterGlyphModel[] = [];
     for (let j = 0; j < Letter.COLOR_NUM; j++) {
       for (let i = 0; i < Letter.LETTER_NUM; i++) {
-        Letter.displayList.newList();
-        Letter.drawGlyph(i, j);
-        Letter.displayList.endList();
+        models.push(Letter.buildGlyphModel(i, j));
       }
     }
+    Letter.glyphModels = models;
   }
 
   public static close(): void {
-    Letter.displayList.close();
+    for (const m of Letter.glyphModels) {
+      if (m.trianglesMesh) Screen3D.glDeleteStaticMesh(m.trianglesMesh);
+      if (m.linesMesh) Screen3D.glDeleteStaticMesh(m.linesMesh);
+    }
+    Letter.glyphModels = [];
   }
 
   public static getWidth(n: number, s: number): number {
@@ -46,21 +47,31 @@ export class Letter {
   }
 
   private static drawLetter(n: number, x: number, y: number, s: number, d: number, c: number): void {
-    glPushMatrix();
-    glTranslatef(x, y, 0);
-    glScalef(s, s, s);
-    glRotatef(d, 0, 0, 1);
-    Letter.displayList.call(n + c * Letter.LETTER_NUM);
-    glPopMatrix();
+    Letter.drawLetterModel(n, x, y, s, d, c, false);
   }
 
   private static drawLetterRev(n: number, x: number, y: number, s: number, d: number, c: number): void {
-    glPushMatrix();
-    glTranslatef(x, y, 0);
-    glScalef(s, -s, s);
-    glRotatef(d, 0, 0, 1);
-    Letter.displayList.call(n + c * Letter.LETTER_NUM);
-    glPopMatrix();
+    Letter.drawLetterModel(n, x, y, s, d, c, true);
+  }
+
+  private static drawLetterModel(
+    n: number,
+    x: number,
+    y: number,
+    s: number,
+    d: number,
+    c: number,
+    reverseY: boolean,
+  ): void {
+    const model = Letter.glyphModels[n + c * Letter.LETTER_NUM];
+    if (!model) return;
+    const rot = ((d % 360) + 360) % 360;
+    Screen3D.glPushMatrix();
+    Screen3D.glTranslatef(x, y, 0);
+    Screen3D.glScalef(s, reverseY ? -s : s, s);
+    if (rot !== 0) Screen3D.glRotatef(rot, 0, 0, 1);
+    Letter.drawGlyphModel(model);
+    Screen3D.glPopMatrix();
   }
 
   public static readonly Direction = {
@@ -223,9 +234,18 @@ export class Letter {
     }
   }
 
-  private static drawGlyph(idx: number, c: number): void {
+  private static buildGlyphModel(idx: number, c: number): LetterGlyphModel {
+    const model: LetterGlyphModel = {
+      dynamicColor: c >= 2,
+      trianglesVertices: [],
+      trianglesColors: [],
+      linesVertices: [],
+      linesColors: [],
+      trianglesMesh: null,
+      linesMesh: null,
+    };
     const glyph = Letter.spData[idx];
-    if (!glyph) return;
+    if (!glyph) return model;
     for (let i = 0; i < glyph.length; i++) {
       let deg = glyph[i][4] | 0;
       if (deg > 99990) break;
@@ -238,54 +258,162 @@ export class Letter {
       length *= 1.05;
       x = -x;
       deg %= 180;
-      if (c === 2) Letter.drawBoxLine(x, y, size, length, deg);
-      else if (c === 3) Letter.drawBoxPoly(x, y, size, length, deg);
-      else Letter.drawBox(x, y, size, length, deg, Letter.COLOR_RGB[c][0], Letter.COLOR_RGB[c][1], Letter.COLOR_RGB[c][2]);
+      if (c === 2) Letter.appendBoxLineGeometry(model, x, y, size, length, deg);
+      else if (c === 3) Letter.appendBoxPolyGeometry(model, x, y, size, length, deg);
+      else Letter.appendBoxGeometry(model, x, y, size, length, deg, Letter.COLOR_RGB[c][0], Letter.COLOR_RGB[c][1], Letter.COLOR_RGB[c][2]);
+    }
+    if (!model.dynamicColor) {
+      if (model.trianglesVertices.length > 0) {
+        model.trianglesMesh = Screen3D.glCreateStaticMesh(
+          Screen3D.GL_TRIANGLES,
+          model.trianglesVertices,
+          model.trianglesColors,
+        );
+      }
+      if (model.linesVertices.length > 0) {
+        model.linesMesh = Screen3D.glCreateStaticMesh(Screen3D.GL_LINES, model.linesVertices, model.linesColors);
+      }
+    }
+    return model;
+  }
+
+  private static drawGlyphModel(model: LetterGlyphModel): void {
+    if (!model.dynamicColor) {
+      if (model.trianglesMesh) Screen3D.glDrawStaticMesh(model.trianglesMesh);
+      else if (model.trianglesVertices.length > 0)
+        Screen3D.glDrawArrays(Screen3D.GL_TRIANGLES, model.trianglesVertices, model.trianglesColors);
+      if (model.linesMesh) Screen3D.glDrawStaticMesh(model.linesMesh);
+      else if (model.linesVertices.length > 0) Screen3D.glDrawArrays(Screen3D.GL_LINES, model.linesVertices, model.linesColors);
+      return;
+    }
+    if (model.trianglesVertices.length > 0) Screen3D.glDrawArrays(Screen3D.GL_TRIANGLES, model.trianglesVertices, []);
+    if (model.linesVertices.length > 0) Screen3D.glDrawArrays(Screen3D.GL_LINES, model.linesVertices, []);
+  }
+
+  private static appendBoxGeometry(model: LetterGlyphModel, x: number, y: number, width: number, height: number, deg: number, r: number, g: number, b: number): void {
+    const p = Letter.calcBoxPoints(x, y, width, height, deg);
+    model.trianglesVertices.push(
+      p[0][0],
+      p[0][1],
+      0,
+      p[1][0],
+      p[1][1],
+      0,
+      p[2][0],
+      p[2][1],
+      0,
+      p[0][0],
+      p[0][1],
+      0,
+      p[2][0],
+      p[2][1],
+      0,
+      p[3][0],
+      p[3][1],
+      0,
+      p[0][0],
+      p[0][1],
+      0,
+      p[3][0],
+      p[3][1],
+      0,
+      p[4][0],
+      p[4][1],
+      0,
+      p[0][0],
+      p[0][1],
+      0,
+      p[4][0],
+      p[4][1],
+      0,
+      p[5][0],
+      p[5][1],
+      0,
+    );
+    for (let i = 0; i < 12; i++) {
+      model.trianglesColors.push(r, g, b, 0.5);
+    }
+    Letter.appendLoopLines(model.linesVertices, p);
+    for (let i = 0; i < 12; i++) {
+      model.linesColors.push(r, g, b, 1);
     }
   }
 
-  private static drawBox(x: number, y: number, width: number, height: number, deg: number, r: number, g: number, b: number): void {
-    glPushMatrix();
-    glTranslatef(x - width / 2, y - height / 2, 0);
-    glRotatef(deg, 0, 0, 1);
-    Screen.setColor(r, g, b, 0.5);
-    glBegin(Screen3D.GL_TRIANGLE_FAN);
-    Letter.drawBoxPart(width, height);
-    glEnd();
-    Screen.setColor(r, g, b);
-    glBegin(Screen3D.GL_LINE_LOOP);
-    Letter.drawBoxPart(width, height);
-    glEnd();
-    glPopMatrix();
+  private static appendBoxLineGeometry(model: LetterGlyphModel, x: number, y: number, width: number, height: number, deg: number): void {
+    const p = Letter.calcBoxPoints(x, y, width, height, deg);
+    Letter.appendLoopLines(model.linesVertices, p);
   }
 
-  private static drawBoxLine(x: number, y: number, width: number, height: number, deg: number): void {
-    glPushMatrix();
-    glTranslatef(x - width / 2, y - height / 2, 0);
-    glRotatef(deg, 0, 0, 1);
-    glBegin(Screen3D.GL_LINE_LOOP);
-    Letter.drawBoxPart(width, height);
-    glEnd();
-    glPopMatrix();
+  private static appendBoxPolyGeometry(model: LetterGlyphModel, x: number, y: number, width: number, height: number, deg: number): void {
+    const p = Letter.calcBoxPoints(x, y, width, height, deg);
+    model.trianglesVertices.push(
+      p[0][0],
+      p[0][1],
+      0,
+      p[1][0],
+      p[1][1],
+      0,
+      p[2][0],
+      p[2][1],
+      0,
+      p[0][0],
+      p[0][1],
+      0,
+      p[2][0],
+      p[2][1],
+      0,
+      p[3][0],
+      p[3][1],
+      0,
+      p[0][0],
+      p[0][1],
+      0,
+      p[3][0],
+      p[3][1],
+      0,
+      p[4][0],
+      p[4][1],
+      0,
+      p[0][0],
+      p[0][1],
+      0,
+      p[4][0],
+      p[4][1],
+      0,
+      p[5][0],
+      p[5][1],
+      0,
+    );
   }
 
-  private static drawBoxPoly(x: number, y: number, width: number, height: number, deg: number): void {
-    glPushMatrix();
-    glTranslatef(x - width / 2, y - height / 2, 0);
-    glRotatef(deg, 0, 0, 1);
-    glBegin(Screen3D.GL_TRIANGLE_FAN);
-    Letter.drawBoxPart(width, height);
-    glEnd();
-    glPopMatrix();
+  private static calcBoxPoints(x: number, y: number, width: number, height: number, deg: number): Array<[number, number]> {
+    const tx = x - width / 2;
+    const ty = y - height / 2;
+    const rad = (deg * Math.PI) / 180;
+    const cs = Math.cos(rad);
+    const sn = Math.sin(rad);
+    const local: Array<[number, number]> = [
+      [-width / 2, 0],
+      [(-width / 3) * 1, -height / 2],
+      [(width / 3) * 1, -height / 2],
+      [width / 2, 0],
+      [(width / 3) * 1, height / 2],
+      [(-width / 3) * 1, height / 2],
+    ];
+    const points: Array<[number, number]> = [];
+    for (let i = 0; i < local.length; i++) {
+      const lx = local[i][0];
+      const ly = local[i][1];
+      points.push([lx * cs - ly * sn + tx, lx * sn + ly * cs + ty]);
+    }
+    return points;
   }
 
-  private static drawBoxPart(width: number, height: number): void {
-    glVertex3f(-width / 2, 0, 0);
-    glVertex3f((-width / 3) * 1, -height / 2, 0);
-    glVertex3f((width / 3) * 1, -height / 2, 0);
-    glVertex3f(width / 2, 0, 0);
-    glVertex3f((width / 3) * 1, height / 2, 0);
-    glVertex3f((-width / 3) * 1, height / 2, 0);
+  private static appendLoopLines(target: number[], p: Array<[number, number]>): void {
+    for (let i = 0; i < p.length; i++) {
+      const ni = i + 1 >= p.length ? 0 : i + 1;
+      target.push(p[i][0], p[i][1], 0, p[ni][0], p[ni][1], 0);
+    }
   }
 
   private static readonly spData: number[][][] = [
@@ -336,34 +464,12 @@ export class Letter {
   ];
 }
 
-function glBegin(mode: number): void {
-  Screen3D.glBegin(mode);
-}
-
-function glEnd(): void {
-  Screen3D.glEnd();
-}
-
-function glPushMatrix(): void {
-  Screen3D.glPushMatrix();
-}
-
-function glPopMatrix(): void {
-  Screen3D.glPopMatrix();
-}
-
-function glTranslatef(x: number, y: number, z: number): void {
-  Screen3D.glTranslatef(x, y, z);
-}
-
-function glScalef(x: number, y: number, z: number): void {
-  Screen3D.glScalef(x, y, z);
-}
-
-function glRotatef(angleDeg: number, x: number, y: number, z: number): void {
-  Screen3D.glRotatef(angleDeg, x, y, z);
-}
-
-function glVertex3f(x: number, y: number, z: number): void {
-  Screen3D.glVertex3f(x, y, z);
+interface LetterGlyphModel {
+  dynamicColor: boolean;
+  trianglesVertices: number[];
+  trianglesColors: number[];
+  linesVertices: number[];
+  linesColors: number[];
+  trianglesMesh: GLCompatStaticMesh | null;
+  linesMesh: GLCompatStaticMesh | null;
 }
