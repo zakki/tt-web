@@ -15,3 +15,20 @@ export type SDLEvent =
 export interface Input {
   handleEvent(event: SDLEvent): void;
 }
+
+export class MultipleInputDevice implements Input {
+  public inputs: Input[] = [];
+
+  public handleEvent(event: SDLEvent): void {
+    for (const input of this.inputs) input.handleEvent(event);
+  }
+
+  public drawTouchGuide(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+    for (const input of this.inputs) {
+      const guideInput = input as Input & {
+        drawTouchGuide?: (ctx: CanvasRenderingContext2D, width: number, height: number) => void;
+      };
+      guideInput.drawTouchGuide?.(ctx, width, height);
+    }
+  }
+}

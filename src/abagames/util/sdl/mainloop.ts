@@ -23,6 +23,7 @@ export class MainLoop {
   public readonly INTERVAL_BASE = 16;
   public interval = this.INTERVAL_BASE;
   public accframe = 0;
+  public nowait = false;
   public maxSkipFrame = 5;
   public event: SDLEvent = { type: 0 };
 
